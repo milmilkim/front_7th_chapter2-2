@@ -3,7 +3,7 @@ import { insertInstance, setDomProps } from "./dom";
 import { FunctionComponent, Instance, VNode } from "./types";
 import { context } from "./context";
 
-export function createInstance(vNode: VNode, path: string): Instance {
+export function createInstance(vNode: VNode, path: string): Instance | null {
   console.log("createInstance", vNode);
   // 함수형 컴포넌트
   if (typeof vNode.type === "function") {
@@ -28,7 +28,9 @@ function createHostInstance(vNode: VNode, path: string): Instance | null {
 
     rawChildren.forEach((childVNode, index) => {
       const childInstance = createInstance(childVNode, `${path}/${index}`);
-      children.push(childInstance);
+      if (childInstance) {
+        children.push(childInstance);
+      }
     });
 
     return {
@@ -50,7 +52,9 @@ function createHostInstance(vNode: VNode, path: string): Instance | null {
 
   childVNodes.forEach((childVNode, i) => {
     const childInstance = createInstance(childVNode, `${path}/${i}`);
-    children.push(childInstance);
+    if (childInstance) {
+      children.push(childInstance);
+    }
     insertInstance(dom as HTMLElement, childInstance);
   });
 
