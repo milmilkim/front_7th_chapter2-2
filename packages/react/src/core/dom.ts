@@ -9,12 +9,22 @@ import { Instance } from "./types";
  */
 export const setDomProps = (dom: HTMLElement, props: Record<string, any>) => {
   for (const [key, value] of Object.entries(props)) {
-    if (key === "children") continue;
+    // children, nodeValue 같은 내부 속성은 건너뛰기
+    if (key === "children" || key === "nodeValue") continue;
 
     if (key === "style" && typeof value === "object") {
       Object.assign(dom.style, value);
     } else if (key === "className") {
       dom.className = value;
+    } else {
+      // 일반 HTML 속성 (id, data-*, disabled, placeholder 등)
+      if (value === true) {
+        dom.setAttribute(key, "");
+      } else if (value === false || value == null) {
+        dom.removeAttribute(key);
+      } else {
+        dom.setAttribute(key, String(value));
+      }
     }
   }
 };
