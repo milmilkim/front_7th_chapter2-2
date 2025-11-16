@@ -66,18 +66,18 @@ export const createElement = (
 ) => {
   // 여기를 구현하세요.
   const { key, ...props } = originProps ?? {};
+
   const children: VNode[] = rawChildren
     .map((child) => normalizeNode(child))
     .flat()
     .filter((child): child is VNode => child !== null);
 
+  const mergedProps = { ...props, ...(children.length > 0 ? { children } : {}) };
+
   const vNode: VNode = {
     type,
     key: key ?? null,
-    props: {
-      ...props,
-      children,
-    },
+    props: mergedProps,
   };
   return vNode;
 };
