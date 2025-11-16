@@ -1,11 +1,11 @@
-import { context } from "./context";
+// import { context } from "./context";
 // import { Fragment, NodeTypes, TEXT_ELEMENT } from "./constants";
 import { Instance, VNode } from "./types";
 import {
   // getFirstDom,
   // getFirstDomFromChildren,
   insertInstance,
-  removeInstance,
+  // removeInstance,
   // setDomProps,
   // updateDomProps,
 } from "./dom";
@@ -37,10 +37,9 @@ export const reconcile = (
   //    - DOM 요소: updateDomProps로 속성 업데이트 후 자식 재조정
   //    - 컴포넌트: 컴포넌트 함수 재실행 후 자식 재조정
 
-  removeInstance(parentDom, instance);
+  // removeInstance(parentDom, instance);
   const newInstance = createInstance(node!, path);
   insertInstance(parentDom, newInstance);
-  context.root.instance = newInstance;
 
   return instance;
 };
