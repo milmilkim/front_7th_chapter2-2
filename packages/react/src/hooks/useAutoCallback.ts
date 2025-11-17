@@ -9,7 +9,16 @@ import { useRef } from "./useRef";
  * @returns 참조가 안정적인 콜백 함수
  */
 export const useAutoCallback = <T extends AnyFunction>(fn: T): T => {
-  // 여기를 구현하세요.
-  // useRef와 useCallback을 조합하여 구현해야 합니다.
-  return fn;
+  const ref = useRef(fn);
+
+  ref.current = fn;
+
+  const stableFn = useCallback<T>(
+    ((...args: unknown[]) => {
+      return ref.current(...args);
+    }) as T,
+    [],
+  );
+
+  return stableFn;
 };
