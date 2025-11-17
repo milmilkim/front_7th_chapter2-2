@@ -146,10 +146,14 @@ function reconcileChildren(parentDom: HTMLElement, parentInstance: Instance, new
   for (let i = 0; i < maxLength; i++) {
     const oldChild = oldChildren[i] || null;
     const newChild = newChildren[i] || null;
-    const childPath = createChildPath(parentInstance.path, newChild?.key ?? null, i, newChild?.type, newChildren);
 
     // 다음 형제 노드를 anchor로 사용 (삽입 위치 보장)
     const anchor = getFirstDomFromChildren(oldChildren.slice(i + 1));
+
+    const childPath =
+      newChild !== null
+        ? createChildPath(parentInstance.path, newChild.key ?? null, i, newChild.type, newChildren)
+        : (oldChild?.path ?? parentInstance.path);
 
     const updatedChild = reconcile(parentDom, oldChild, newChild, childPath);
 

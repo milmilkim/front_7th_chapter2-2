@@ -3,30 +3,25 @@ import { isEmptyValue } from "../utils/validators";
 // import { NodeType, NodeTypes } from "./constants";
 import { Instance } from "./types";
 
+type EventMap = Record<string, EventListener>;
+
+const isEventProp = (key: string): boolean => /^on[A-Z]/.test(key);
+const toEventName = (key: string): string => key.slice(2).toLowerCase();
+const eventStore = new WeakMap<HTMLElement, EventMap>();
+
+const getEventStore = (dom: HTMLElement): EventMap => {
+  if (!eventStore.has(dom)) {
+    eventStore.set(dom, {});
+  }
+  return eventStore.get(dom)!;
+};
+
 /**
  * DOM 요소에 속성(props)을 설정합니다.
  * 이벤트 핸들러, 스타일, className 등 다양한 속성을 처리해야 합니다.
  */
 export const setDomProps = (dom: HTMLElement, props: Record<string, any>) => {
-  for (const [key, value] of Object.entries(props)) {
-    // children, nodeValue 같은 내부 속성은 건너뛰기
-    if (key === "children" || key === "nodeValue") continue;
-
-    if (key === "style" && typeof value === "object") {
-      Object.assign(dom.style, value);
-    } else if (key === "className") {
-      dom.className = value;
-    } else {
-      // 일반 HTML 속성 (id, data-*, disabled, placeholder 등)
-      if (value === true) {
-        dom.setAttribute(key, "");
-      } else if (value === false || value == null) {
-        dom.removeAttribute(key);
-      } else {
-        dom.setAttribute(key, String(value));
-      }
-    }
-  }
+  updateDomProps(dom, {}, props);
 };
 
 /**
@@ -35,12 +30,61 @@ export const setDomProps = (dom: HTMLElement, props: Record<string, any>) => {
  */
 export const updateDomProps = (
   dom: HTMLElement,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _prevProps: Record<string, any> = {},
+  prevProps: Record<string, any> = {},
   nextProps: Record<string, any> = {},
 ): void => {
-  // FIXME: 두 개를 비교하여 바뀐 것만 업데이트
-  setDomProps(dom, nextProps);
+  const keys = new Set([...Object.keys(prevProps), ...Object.keys(nextProps)]);
+
+  keys.forEach((key) => {
+    if (key === "children" || key === "nodeValue") return;
+
+    const prevValue = prevProps[key];
+    const nextValue = nextProps[key];
+    if (prevValue === nextValue) return;
+
+    if (isEventProp(key)) {
+      const eventName = toEventName(key);
+      const store = eventStore.get(dom);
+      const prevListener = store?.[eventName];
+      if (prevListener) {
+        dom.removeEventListener(eventName, prevListener);
+        delete store![eventName];
+      }
+      if (typeof nextValue === "function") {
+        const listener = nextValue as EventListener;
+        dom.addEventListener(eventName, listener);
+        getEventStore(dom)[eventName] = listener;
+      }
+      return;
+    }
+
+    if (key === "style") {
+      const prevStyle = prevValue || {};
+      const nextStyle = nextValue || {};
+      for (const styleKey of Object.keys(prevStyle)) {
+        if (!(styleKey in nextStyle)) {
+          (dom.style as any)[styleKey] = "";
+        }
+      }
+      if (typeof nextStyle === "object") {
+        Object.assign(dom.style, nextStyle);
+      }
+      return;
+    }
+
+    if (key === "className") {
+      dom.className = nextValue ?? "";
+      return;
+    }
+
+    if (nextValue === true) {
+      dom.setAttribute(key, "");
+    } else if (nextValue === false || nextValue == null) {
+      dom.removeAttribute(key);
+    } else {
+      dom.setAttribute(key, String(nextValue));
+    }
+  });
 };
 
 /**

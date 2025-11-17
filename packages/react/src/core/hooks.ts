@@ -22,6 +22,7 @@ export const useState = <T>(initialValue: T | (() => T)): [T, (nextValue: T | ((
   const path = context.hooks.currentPath;
   const cursor = context.hooks.currentCursor;
   const hooks = context.hooks.currentHooks;
+  console.log("useState called", { path, cursor, hooksLength: hooks.length, currentValue: hooks[cursor] });
 
   // 2. 첫 렌더링이라면 초기값으로 상태를 설정합니다.
   if (hooks[cursor] === undefined) {
@@ -35,11 +36,18 @@ export const useState = <T>(initialValue: T | (() => T)): [T, (nextValue: T | ((
   //    - 새 값이 이전 값과 같으면(Object.is) 재렌더링을 건너뜁니다.
   //    - 값이 다르면 상태를 업데이트하고 재렌더링을 예약(enqueueRender)합니다.
   const setState = (nextValue: T | ((prev: T) => T)) => {
-    const prevValue = hooks[cursor];
+    // setState는 컴포넌트 바깥에서도 호출될 수 있으므로, path와 cursor를 클로저로 캡처
+    const stateArray = context.hooks.state.get(path);
+    console.log("setState called", { path, cursor, stateArray, nextValue });
+    if (!stateArray) return;
+
+    const prevValue = stateArray[cursor];
     const newValue = typeof nextValue === "function" ? (nextValue as (prev: T) => T)(prevValue) : nextValue;
+    console.log("setState values", { prevValue, newValue });
 
     if (!Object.is(newValue, prevValue)) {
-      hooks[cursor] = newValue;
+      stateArray[cursor] = newValue;
+      console.log("setState updated", stateArray[cursor]);
       enqueueRender();
     }
   };
