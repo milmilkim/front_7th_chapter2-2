@@ -194,11 +194,31 @@ export const insertInstance = (
  * 부모 DOM에서 인스턴스에 해당하는 모든 DOM 노드를 제거합니다.
  */
 export const removeInstance = (parentDom: HTMLElement, instance: Instance | null): void => {
-  if (isEmptyValue(instance)) {
-    return;
-  }
+  if (!instance) return;
+
   const nodes = getDomNodes(instance);
+
   nodes.forEach((node) => {
-    parentDom.removeChild(node);
+    // 1) 이벤트 리스너 제거
+    // HTMLElement일 때만 스토어 존재 가능
+    if (node instanceof HTMLElement) {
+      const store = eventStore.get(node);
+      if (store) {
+        for (const eventName in store) {
+          const handler = store[eventName];
+          node.removeEventListener(eventName, handler);
+        }
+        // 스토어 자체 정리
+        eventStore.delete(node);
+      }
+    }
+
+    // 2) DOM 제거 (원래 구조 그대로)
+    if (node.parentNode === parentDom) {
+      parentDom.removeChild(node);
+    } else {
+      // 혹시라도 reconcileChildren에서 DOM이 이동한 경우 대비
+      node.remove();
+    }
   });
 };
