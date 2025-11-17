@@ -21,7 +21,32 @@ const getEventStore = (dom: HTMLElement): EventMap => {
  * 이벤트 핸들러, 스타일, className 등 다양한 속성을 처리해야 합니다.
  */
 export const setDomProps = (dom: HTMLElement, props: Record<string, any>) => {
-  updateDomProps(dom, {}, props);
+  for (const key in props) {
+    if (key === "children" || key === "nodeValue") continue;
+
+    const value = props[key];
+
+    if (isEventProp(key)) {
+      const eventName = toEventName(key);
+      dom.addEventListener(eventName, value);
+      getEventStore(dom)[eventName] = value;
+      continue;
+    }
+
+    if (key === "style" && typeof value === "object") {
+      Object.assign(dom.style, value);
+      continue;
+    }
+
+    if (key === "className") {
+      dom.className = value || "";
+      continue;
+    }
+
+    if (value === true) dom.setAttribute(key, "");
+    else if (value === false || value == null) dom.removeAttribute(key);
+    else dom.setAttribute(key, String(value));
+  }
 };
 
 /**
@@ -32,7 +57,7 @@ export const updateDomProps = (
   dom: HTMLElement,
   prevProps: Record<string, any> = {},
   nextProps: Record<string, any> = {},
-): void => {
+) => {
   const keys = new Set([...Object.keys(prevProps), ...Object.keys(nextProps)]);
 
   keys.forEach((key) => {
@@ -40,53 +65,57 @@ export const updateDomProps = (
 
     const prevValue = prevProps[key];
     const nextValue = nextProps[key];
+
+    // 동일하면 스킵
     if (prevValue === nextValue) return;
 
+    // ===== 이벤트 =====
     if (isEventProp(key)) {
       const eventName = toEventName(key);
       const store = eventStore.get(dom);
       const prevListener = store?.[eventName];
+
       if (prevListener) {
         dom.removeEventListener(eventName, prevListener);
-        delete store![eventName];
+        delete store[eventName];
       }
+
       if (typeof nextValue === "function") {
-        const listener = nextValue as EventListener;
-        dom.addEventListener(eventName, listener);
-        getEventStore(dom)[eventName] = listener;
+        dom.addEventListener(eventName, nextValue);
+        getEventStore(dom)[eventName] = nextValue;
       }
+
       return;
     }
 
+    // ===== 스타일 =====
     if (key === "style") {
       const prevStyle = prevValue || {};
       const nextStyle = nextValue || {};
-      for (const styleKey of Object.keys(prevStyle)) {
-        if (!(styleKey in nextStyle)) {
-          (dom.style as any)[styleKey] = "";
-        }
+
+      // 제거할 스타일
+      for (const k in prevStyle) {
+        if (!(k in nextStyle)) (dom.style as any)[k] = "";
       }
-      if (typeof nextStyle === "object") {
-        Object.assign(dom.style, nextStyle);
-      }
+
+      // 추가/업데이트
+      Object.assign(dom.style, nextStyle);
+
       return;
     }
 
+    // ===== className =====
     if (key === "className") {
-      dom.className = nextValue ?? "";
+      dom.className = nextValue || "";
       return;
     }
 
-    if (nextValue === true) {
-      dom.setAttribute(key, "");
-    } else if (nextValue === false || nextValue == null) {
-      dom.removeAttribute(key);
-    } else {
-      dom.setAttribute(key, String(nextValue));
-    }
+    // ===== 일반 attribute =====
+    if (nextValue === true) dom.setAttribute(key, "");
+    else if (nextValue === false || nextValue == null) dom.removeAttribute(key);
+    else dom.setAttribute(key, String(nextValue));
   });
 };
-
 /**
  * 주어진 인스턴스에서 실제 DOM 노드(들)를 재귀적으로 찾아 배열로 반환합니다.
  * Fragment나 컴포넌트 인스턴스는 여러 개의 DOM 노드를 가질 수 있습니다.
