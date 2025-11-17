@@ -2,6 +2,7 @@ import { Fragment, NodeTypes, TEXT_ELEMENT } from "./constants";
 import { insertInstance, setDomProps } from "./dom";
 import { FunctionComponent, Instance, VNode } from "./types";
 import { context } from "./context";
+import { createChildPath } from "./elements";
 
 export function createInstance(vNode: VNode, path: string): Instance | null {
   console.log("createInstance", vNode);
@@ -27,7 +28,8 @@ function createHostInstance(vNode: VNode, path: string): Instance | null {
     const rawChildren = vNode.props.children || [];
 
     rawChildren.forEach((childVNode, index) => {
-      const childInstance = createInstance(childVNode, `${path}/${index}`);
+      const childPath = createChildPath(path, childVNode.key ?? null, index, childVNode.type, rawChildren);
+      const childInstance = createInstance(childVNode, childPath);
       if (childInstance) {
         children.push(childInstance);
       }
@@ -51,11 +53,12 @@ function createHostInstance(vNode: VNode, path: string): Instance | null {
   const childVNodes = vNode.props.children || [];
 
   childVNodes.forEach((childVNode, i) => {
-    const childInstance = createInstance(childVNode, `${path}/${i}`);
+    const childPath = createChildPath(path, childVNode.key ?? null, i, childVNode.type, childVNodes);
+    const childInstance = createInstance(childVNode, childPath);
     if (childInstance) {
       children.push(childInstance);
+      insertInstance(dom as HTMLElement, childInstance);
     }
-    insertInstance(dom as HTMLElement, childInstance);
   });
 
   return {
@@ -93,7 +96,9 @@ function createFunctionalInstance(vNode: VNode, path: string): Instance {
   // 컴포넌트 스택에서 제거
   context.hooks.componentStack.pop();
 
-  const childInstance = createInstance(childVNode!, path);
+  // 자식에게 고유한 경로 생성
+  const childPath = childVNode ? createChildPath(path, childVNode.key ?? null, 0, childVNode.type, [childVNode]) : path;
+  const childInstance = createInstance(childVNode!, childPath);
 
   return {
     kind: NodeTypes.COMPONENT,

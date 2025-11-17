@@ -1,8 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { isEmptyValue } from "../utils";
 import { VNode } from "./types";
-import { TEXT_ELEMENT } from "./constants";
-// import { Fragment, TEXT_ELEMENT } from "./constants";
+import { Fragment, TEXT_ELEMENT } from "./constants";
 
 export const isVNode = (value: any): value is VNode =>
   value && typeof value === "object" && "type" in value && "props" in value;
@@ -86,13 +85,37 @@ export const createElement = (
  * 부모 경로와 자식의 key/index를 기반으로 고유한 경로를 생성합니다.
  * 이는 훅의 상태를 유지하고 Reconciliation에서 컴포넌트를 식별하는 데 사용됩니다.
  */
-// export const createChildPath = (
-//   parentPath: string,
-//   key: string | null,
-//   index: number,
-//   nodeType?: string | symbol | React.ComponentType,
-//   siblings?: VNode[],
-// ): string => {
-//   // 여기를 구현하세요.
-//   return "";
-// };
+export const createChildPath = (
+  parentPath: string,
+  key: string | null,
+  index: number,
+  nodeType?: string | symbol | React.ComponentType,
+  siblings?: VNode[],
+): string => {
+  // 1. prefix 결정 (컴포넌트 타입별로 구분)
+  let prefix = "h"; // host (일반 HTML 요소)
+  if (typeof nodeType === "function") {
+    // 함수형 컴포넌트는 함수 이름을 포함
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+    prefix = `c:${(nodeType as Function).name || "anonymous"}`;
+  } else if (nodeType === Fragment) {
+    prefix = "f"; // fragment
+  } else if (nodeType === TEXT_ELEMENT) {
+    prefix = "t"; // text
+  }
+
+  // 2. key가 있으면 key 기반으로 경로 생성
+  if (key != null) {
+    const id = `${prefix}:key(${key})`;
+    return parentPath ? `${parentPath}/${id}` : id;
+  }
+
+  // 3. key가 없으면 같은 타입의 형제들 중 몇 번째인지 계산 (stableIndex)
+  const sibs = siblings ?? [];
+  const sameTypeSiblings = sibs.filter((s) => s.type === nodeType);
+  const vnode = sibs[index] ?? null;
+  const stableIndex = vnode !== null ? sameTypeSiblings.indexOf(vnode) : index;
+
+  const id = `${prefix}:${stableIndex}`;
+  return parentPath ? `${parentPath}/${id}` : id;
+};

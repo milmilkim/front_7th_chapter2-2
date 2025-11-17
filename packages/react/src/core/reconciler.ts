@@ -3,6 +3,7 @@ import { FunctionComponent, Instance, VNode } from "./types";
 import { getFirstDomFromChildren, insertInstance, removeInstance, updateDomProps } from "./dom";
 import { createInstance } from "./instance";
 import { context } from "./context";
+import { createChildPath } from "./elements";
 
 /**
  * 이전 인스턴스와 새로운 VNode를 비교하여 DOM을 업데이트하는 재조정 과정을 수행합니다.
@@ -19,6 +20,13 @@ export const reconcile = (
   node: VNode | null,
   path: string,
 ): Instance | null => {
+  console.log("reconcile called", {
+    instancePath: instance?.path,
+    newPath: path,
+    nodeType: node?.type,
+    instanceType: instance?.node.type,
+  });
+
   // 1. 새 노드가 null이면 기존 인스턴스를 제거합니다. (unmount)
   if (node === null) {
     if (instance) {
@@ -36,6 +44,14 @@ export const reconcile = (
 
   // 3. 타입이나 키가 다르면 기존 인스턴스를 제거하고 새로 마운트합니다.
   if (instance.node.type !== node.type || instance.key !== node.key) {
+    console.log("REPLACE: type or key changed", {
+      instanceType: instance.node.type,
+      nodeType: node.type,
+      instanceKey: instance.key,
+      nodeKey: node.key,
+      instancePath: instance.path,
+      newPath: path,
+    });
     removeInstance(parentDom, instance);
     const newInstance = createInstance(node, path);
     insertInstance(parentDom, newInstance);
@@ -57,8 +73,10 @@ export const reconcile = (
     // 텍스트 노드: 내용 업데이트
     if (instance.dom && instance.dom instanceof Text) {
       const newText = node.props.nodeValue || "";
+      console.log("TEXT update", { old: instance.dom.nodeValue, new: newText });
       if (instance.dom.nodeValue !== newText) {
         instance.dom.nodeValue = newText;
+        console.log("TEXT updated to", newText);
       }
     }
   } else if (instance.kind === NodeTypes.COMPONENT) {
@@ -89,7 +107,15 @@ export const reconcile = (
 
     if (childVNode) {
       const oldChild = instance.children[0] || null;
-      const newChild = reconcile(parentDom, oldChild, childVNode, path);
+      // 자식에게 고유한 경로 생성
+      const childPath = createChildPath(path, childVNode.key ?? null, 0, childVNode.type, [childVNode]);
+      console.log("COMPONENT child reconcile", {
+        componentPath: path,
+        childPath,
+        oldChildPath: oldChild?.path,
+        childVNodeType: childVNode.type,
+      });
+      const newChild = reconcile(parentDom, oldChild, childVNode, childPath);
       instance.children = newChild ? [newChild] : [];
       instance.dom = newChild?.dom || null;
     } else {
@@ -120,7 +146,7 @@ function reconcileChildren(parentDom: HTMLElement, parentInstance: Instance, new
   for (let i = 0; i < maxLength; i++) {
     const oldChild = oldChildren[i] || null;
     const newChild = newChildren[i] || null;
-    const childPath = `${parentInstance.path}/${i}`;
+    const childPath = createChildPath(parentInstance.path, newChild?.key ?? null, i, newChild?.type, newChildren);
 
     // 다음 형제 노드를 anchor로 사용 (삽입 위치 보장)
     const anchor = getFirstDomFromChildren(oldChildren.slice(i + 1));
