@@ -11,11 +11,36 @@ import { shallowEquals } from "../utils";
  * @returns 메모이제이션이 적용된 새로운 컴포넌트
  */
 export function memo<P extends object>(Component: FunctionComponent<P>, equals = shallowEquals) {
-  const MemoizedComponent: FunctionComponent<P> = (props) => {
-    // 여기를 구현하세요.
-    // useRef를 사용하여 이전 props와 렌더링 결과를 저장해야 합니다.
-    // equals 함수로 이전 props와 현재 props를 비교하여 렌더링 여부를 결정합니다.
-    return Component(props);
+  // useRef를 사용하여 이전 props와 렌더링 결과를 저장해야 합니다.
+  // equals 함수로 이전 props와 현재 props를 비교하여 렌더링 여부를 결정합니다.
+
+  const MemoizedComponent: FunctionComponent<P> = (props: P) => {
+    const ref = useRef<{
+      prevProps: P | null;
+      prevVNode: VNode | null;
+    }>({
+      prevProps: null,
+      prevVNode: null,
+    });
+
+    // 첫 렌더 → 무조건 렌더
+    if (ref.current.prevProps === null) {
+      const vNode = Component(props);
+      ref.current.prevProps = props;
+      ref.current.prevVNode = vNode;
+      return vNode;
+    }
+
+    // props 같으면 → 이전 결과 그대로 반환 (렌더 스킵)
+    if (equals(ref.current.prevProps, props)) {
+      return ref.current.prevVNode!;
+    }
+
+    // props 다르면 → 다시 렌더 후 저장
+    const nextVNode = Component(props);
+    ref.current.prevProps = props;
+    ref.current.prevVNode = nextVNode;
+    return nextVNode;
   };
 
   MemoizedComponent.displayName = `Memo(${Component.displayName || Component.name})`;
