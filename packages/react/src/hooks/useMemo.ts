@@ -12,8 +12,27 @@ import { shallowEquals } from "../utils";
  * @returns 메모이제이션된 값
  */
 export const useMemo = <T>(factory: () => T, deps: DependencyList, equals = shallowEquals): T => {
-  // 여기를 구현하세요.
   // useRef를 사용하여 이전 의존성 배열과 계산된 값을 저장해야 합니다.
   // equals 함수로 의존성을 비교하여 factory 함수를 재실행할지 결정합니다.
-  return factory();
+  const memoRef = useRef<{ deps: DependencyList[] | null; value: T | null }>({
+    deps: null,
+    value: null,
+  });
+
+  // 이전 deps가 없으면 (첫 실행)
+  if (memoRef.current.deps === null) {
+    const value = factory();
+    memoRef.current = { deps: deps as DependencyList[], value };
+    return value;
+  }
+
+  // deps 동일하면 기존 value 재사용
+  if (equals(memoRef.current.deps, deps)) {
+    return memoRef.current.value as T;
+  }
+
+  // deps 변경 → 재계산
+  const nextValue = factory();
+  memoRef.current = { deps: deps as DependencyList[], value: nextValue };
+  return nextValue;
 };
