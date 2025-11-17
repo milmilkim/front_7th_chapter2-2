@@ -24,7 +24,7 @@ export const useState = <T>(initialValue: T | (() => T)): [T, (nextValue: T | ((
   const hooks = context.hooks.currentHooks;
 
   // 2. 첫 렌더링이라면 초기값으로 상태를 설정합니다.
-  if (!hooks[cursor]) {
+  if (hooks[cursor] === undefined) {
     const value = typeof initialValue === "function" ? (initialValue as () => T)() : initialValue;
     hooks[cursor] = value;
   }

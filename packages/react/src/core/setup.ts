@@ -18,7 +18,9 @@ export const setup = (rootNode: VNode | null, container: HTMLElement): void => {
   }
 
   // 2. 이전 렌더링 내용을 정리하고 컨테이너를 비웁니다.
-  removeInstance(container, context.root.instance);
+  if (context.root.instance && context.root.container) {
+    removeInstance(context.root.container, context.root.instance);
+  }
   container.innerHTML = "";
 
   // 3. 루트 컨텍스트와 훅 컨텍스트를 리셋합니다.
@@ -26,6 +28,7 @@ export const setup = (rootNode: VNode | null, container: HTMLElement): void => {
     throw new Error("루트 노드가 없습니다.");
   }
   context.root.reset({ container, node: rootNode! });
+  context.hooks.state.clear(); // 새로운 앱 시작 시에는 state도 초기화
   context.hooks.clear();
 
   // 4. 첫 렌더링을 실행합니다.
