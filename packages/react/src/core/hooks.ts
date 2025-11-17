@@ -1,14 +1,57 @@
-// import { shallowEquals, withEnqueue } from "../utils";
+import { shallowEquals, withEnqueue } from "../utils";
 import { context } from "./context";
-// import { EffectHook } from "./types";
+import { EffectHook } from "./types";
 import { enqueueRender } from "./render";
-// import { HookTypes } from "./constants";
+import { HookTypes } from "./constants";
+
+const isEffectHook = (hook: unknown): hook is EffectHook => {
+  return Boolean(hook && typeof hook === "object" && (hook as EffectHook).kind === HookTypes.EFFECT);
+};
+
+const flushEffects = () => {
+  const queue = context.effects.queue.splice(0);
+  queue.forEach(({ path, cursor }) => {
+    const hooks = context.hooks.state.get(path);
+    if (!hooks) return;
+    const hook = hooks[cursor];
+    if (!isEffectHook(hook)) return;
+
+    if (typeof hook.cleanup === "function") {
+      hook.cleanup();
+      hook.cleanup = null;
+    }
+
+    const cleanup = hook.effect();
+    hook.cleanup = typeof cleanup === "function" ? cleanup : null;
+  });
+};
+
+const enqueueEffects = withEnqueue(flushEffects);
 
 /**
  * 사용되지 않는 컴포넌트의 훅 상태와 이펙트 클린업 함수를 정리합니다.
  */
 export const cleanupUnusedHooks = () => {
-  // 여기를 구현하세요.
+  const removedPaths = new Set<string>();
+
+  for (const [path, hooks] of context.hooks.state.entries()) {
+    if (context.hooks.visited.has(path)) continue;
+
+    hooks.forEach((hook) => {
+      if (isEffectHook(hook) && typeof hook.cleanup === "function") {
+        hook.cleanup();
+        hook.cleanup = null;
+      }
+    });
+
+    context.hooks.state.delete(path);
+    context.hooks.cursor.delete(path);
+    removedPaths.add(path);
+  }
+
+  if (removedPaths.size > 0) {
+    context.effects.queue = context.effects.queue.filter(({ path }) => !removedPaths.has(path));
+  }
 };
 
 /**
@@ -62,11 +105,35 @@ export const useState = <T>(initialValue: T | (() => T)): [T, (nextValue: T | ((
  * @param effect - 실행할 이펙트 함수. 클린업 함수를 반환할 수 있습니다.
  * @param deps - 의존성 배열. 이 값들이 변경될 때만 이펙트가 다시 실행됩니다.
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+
 export const useEffect = (effect: () => (() => void) | void, deps?: unknown[]): void => {
-  // 여기를 구현하세요.
-  // 1. 이전 훅의 의존성 배열과 현재 의존성 배열을 비교(shallowEquals)합니다.
-  // 2. 의존성이 변경되었거나 첫 렌더링일 경우, 이펙트 실행을 예약합니다.
-  // 3. 이펙트 실행 전, 이전 클린업 함수가 있다면 먼저 실행합니다.
-  // 4. 예약된 이펙트는 렌더링이 끝난 후 비동기로 실행됩니다.
+  const path = context.hooks.currentPath;
+  const cursor = context.hooks.currentCursor;
+  const hooks = context.hooks.currentHooks;
+
+  const prevHook = hooks[cursor];
+  const depsArray = Array.isArray(deps) ? deps : null;
+
+  const shouldRun =
+    depsArray === null ||
+    !prevHook ||
+    !isEffectHook(prevHook) ||
+    prevHook.deps === null ||
+    !shallowEquals(prevHook.deps, depsArray);
+
+  const hook: EffectHook = {
+    kind: HookTypes.EFFECT,
+    deps: depsArray,
+    cleanup: isEffectHook(prevHook) ? prevHook.cleanup : null,
+    effect,
+  };
+
+  hooks[cursor] = hook;
+
+  if (shouldRun) {
+    context.effects.queue.push({ path, cursor });
+    enqueueEffects();
+  }
+
+  context.hooks.cursor.set(path, cursor + 1);
 };
