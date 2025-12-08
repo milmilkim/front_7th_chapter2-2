@@ -1,136 +1,75 @@
-# React 구현 과제 문서
+### 배포 링크
+https://milmilkim.github.io/front_7th_chapter2-2/
 
-React의 핵심 기능을 직접 구현해보며 내부 동작 원리를 이해하기 위한 종합 가이드입니다.
+기존에 jsx에 대해 학습한 적이 있는데 커스텀h 함수로 dom으로 변환하는 과정만 다루었다.
+```js
+const app = h(
+  "div",
+  { className: "app" },
+  h("h1", null, "Hello JSX in Vanilla JavaScript!"),
+  h("p", null, test)
+);
 
-## 📚 문서 구성
+document.getElementById("root").appendChild(app);
+```
+이번 과제에서는 그 h() 호출과 실제 DOM 업데이트 사이에서 벌어지는 훨씬 많은 과정들을 구현해야 했다. 기본적으로 틀은 잡혀있고 리액트의 코어 로직을 모사하는 게 이번 과제였다. 당연히 실제 리액트와는 많은 차이가 있다.
+(자력으로 구현하는데는 실패했다. 나보다 똑똑한 사람들이 모여서 몇 년 동안 고민하면서 내놓은 최적의 설계를 며칠동안 구현할 수 있다면 내가 이미 프레임워크 개발자가 되었을 것이다. 하지만 이 과정을 통해 리액트와 훅에 대해 더 이해하게 되었다는 것에 의의가 있다.)
+전체적으로는 chatGPT에 단계적으로 질문해가며 진행했다. 
 
-### [01. 구현 가이드](docs/01-implementation-guide.md)
-- **함수 인터페이스**: 각 모듈별 타입 시그니처와 책임
-- **수도코드**: 렌더링, 훅, 비교 로직의 전체 흐름
-- **단계별 로드맵**: 기본·심화 과제에 맞춘 구현 체크포인트
+### 아하! 모먼트 (A-ha! Moment)
 
-### [02. 시퀀스 다이어그램](docs/02-sequence-diagrams.md)
-- **기본 플로우**: 루트 초기화, 렌더, 훅 실행, Reconciliation
-- **심화 플로우**: 고급 훅(useMemo/useRef/useAutoCallback)과 HOC 처리
-- **시각 자료**: 주요 함수 호출 순서와 데이터 이동을 다이어그램으로 정리
+먼저 VNode의 스펙을 확인해보았는데 그러면서 가상 돔이란 VNode의 트리라는 것을 이해했다. 이 과정에서 TextElement와 Fragment를 예외적으로 처리해야 한다거나... number를 string으로 변환해야 한다는 걸 깨달았다. 그리고 children이 존재할 때만 props를 추가해서 몇 개의 테스트 코드를 통과했다. 다만 Path라는 게 어떤 방식으로 만들고 어떻게 다루는지 잘 알 수 없었기에 일단 나중으로 미루었다.
 
-### [03. 기초 지식](docs/03-fundamental-knowledge.md)
-- **VNode & 경로 모델**: JSX 정규화와 key/경로 규칙
-- **렌더 사이클**: 컨텍스트 초기화, 렌더 예약, 훅 정리 절차
-- **리컨실리에이션 전략**: 자식 비교, anchor 계산, Fragment 다루기
-- **DOM 상호작용**: 속성·스타일·이벤트 업데이트 패턴
-- **Hook 컨텍스트**: 상태 저장 구조와 useState/useEffect 규칙
-- **스케줄링 & 유틸**: 마이크로태스크 큐, equality 함수, memo 패턴
+여기까지는 나쁘지 않았다. 하지만 이후의 전역 컨텍스트, 재조정, 인스턴스, 돔 업데이트가 얽혀있었고 어떤 순서로 어떻게 진행해야 할지 혼란스러웠다. 인스턴스를 어떻게 다루어야 하는지도 어려웠다. 재조정 알고리즘까지 가기 전에 그냥 단순 마운트만 시켜보고 싶었는데 그것조차 잘 이해가 안 됐다. 어디에서 DOM을 업데이트 해야 하는 거지? 나는 별도의 instance 관련된 파일을 하나 추가해서 그곳에서 처리했다. 그 과정에서 이제 VNode는 매번 새로 만들어지는 것이고, 인스턴스는 실제 DOM을 가지고 있는 객체라는 것을 깨달았다. 새로 만들어진 가상 DOM과 기존의 인스턴스를 비교해서 바뀐 부분만 렌더링하는 것이 리액트의 핵심이다. 그래서 reconcile에서 마운트도 일어난다. 
 
-## 🎯 학습 목표
+일반 dom뿐 아니라 함수형 컴포넌트와 같은 처리를 별도로 해주어야 한다는 깨달음을 얻었다.
 
-이 과제를 통해 다음을 이해할 수 있습니다:
+그 다음으로 개발 서버에서 단순히 컴포넌트가 렌더링 되는 부분을 확인하려 했다. (setDomProps, updateDomProps를 제대로 구현하지 않았다.) 아무 일도 일어나지 않았다. 🥺  vNode가 falsy한 상태로 넘어오는 경우가 있었기 때문이었다. 이 부분을 예외 처리했더니 렌더링 문제는 없어졌지만 여기저기서 undefined, null, false, "", 0등이 다양한 상황에서 섞여 들어오기 때문에 쉽지 않았다. 정규화를 제대로 해야 하는 부분이다.
+```js
+function createHostInstance(vNode: VNode, path: string): Instance | null {
+  if (!vNode) {
+    // FIXME: 왜?
+    return null;
+  }
+```
+통과 되어야 할 테스트가 통과되지 않아 한참 고민했는데 제대로 구현하지 않은 setDomProps가 문제였다. id같은 기본적인 속성도 안 넣어놓고 있어서 요소를 찾지 못해 발생하는 문제였다. 여기서 또한 children, nodeValue같은 속성은 건너뛰어야 했다.
 
-- **Virtual DOM**의 동작 원리와 Reconciliation 알고리즘
-- **React Hooks**의 내부 구현과 상태 관리 메커니즘
-- **컴포넌트 생명주기**와 렌더링 최적화 기법
-- **메모이제이션**과 **HOC** 패턴의 구현 원리
-- **JavaScript 기반 DOM 조작**과 이벤트 처리 전략
+useState의 구현은 AI에게 맡겼는데, 우선 hook에 대한 구현을 이해하지는 못했으나 재렌더링이 되지 않는 문제가 있었다. 그래서 전체적으로 코드를 다시 살펴보며 AI와 함께 디버깅 했다. 어떤 문제들이 있었냐면..
 
-## 🚀 시작하기
+- context의 clear에서 state까지 초기화를 하면 안 됨 (최초에는 state도 초기화)
+- hooks[cursor]가 0..이거나 한 것도 falsy이니 undefined일때만 초기화
+- reconcile 후 인스턴스를 저장하여 콘텍스트의 인스턴스 변경
+- 자식 재조정에서 항상 ''만 넘겼던 것을 수정
+- 텍스트 노드는 host가 아니라 NodeType.TEXT 인스턴스를 돌려주도록 수정
+- setProps가 모든 속성을 덮어쓰는 것을 수정
 
-1. **기초 지식 학습**: [03-fundamental-knowledge.md](docs/03-fundamental-knowledge.md)로 필수 개념 정리
-2. **시퀀스 이해**: [02-sequence-diagrams.md](docs/02-sequence-diagrams.md)에서 전체 호출 흐름 파악
-3. **단계별 구현**: [01-implementation-guide.md](docs/01-implementation-guide.md)의 체크리스트에 따라 진행
+추가로 'path'를 생성하도록 했다.
+여기서 대략적으로 재조정 알고리즘에 key가 왜 중요한지 체감하게 되었으며 리액트에서 컴포넌트를 전역적으로 어떻게 제어하고 있는지 알게 되었다.
 
-## 📋 구현 체크리스트
+이후의 useEffect를 AI에게 구현을 하게 한 후 전반적인 hook과 useState, useEffect에 대해 공부했다. hook은 컴포넌트 단위의 배열이었다.
+hook이 만들어지는 시점은 인스턴스가 만들어지는 시점이며 실행 순서와 커서의 순서에 대해 깨달았다.
+```
+render()
+  └ reconcile()
+       └ createFunctionalInstance()
+            └ push componentStack
+            └ cursor[path] = 0
+            └ state[path] = []
+            └ Component() 실행
+                  └ useState() 
+                        -> state[path][cursor]
+                        -> cursor++
+                  └ useEffect()
+                        -> state[path][cursor]
+                        -> cursor++
+            └ pop componentStack
 
-### ✅ 기본 과제
-- [ ] **Phase 1 · VNode와 기초 유틸리티** (`core/constants.ts`, `core/elements.ts`, `utils/equals.ts`, `utils/validators.ts`)
-  - `TEXT_ELEMENT`, `Fragment` 등의 심볼 정의
-  - `isEmptyValue`, `shallowEquals`, `deepEquals` 등 공용 유틸 구현
-  - `createElement`, `normalizeNode`, `createChildPath`로 JSX → VNode 정규화
-- [ ] **Phase 2 · 컨텍스트와 루트 초기화** (`core/context.ts`, `core/types.ts`, `core/setup.ts`, `client/index.ts`)
-  - 루트/훅 컨텍스트 구조 정의 및 초기화
-  - `setup`으로 루트 렌더 흐름 구축, `createRoot` 노출
-- [ ] **Phase 3 · DOM 인터페이스** (`core/dom.ts`)
-  - 속성/스타일/이벤트 업데이트 규칙 구현
-  - DOM 노드 탐색·삽입·제거 유틸 완성
-- [ ] **Phase 4 · 렌더 스케줄링** (`utils/enqueue.ts`, `core/render.ts`)
-  - 마이크로태스크 기반 스케줄러(`withEnqueue`) 작성
-  - `render`/`enqueueRender`로 루트 렌더 사이클 구성
-- [ ] **Phase 5 · Reconciliation** (`core/reconciler.ts`)
-  - 노드 타입별 마운트/업데이트/언마운트 로직 구현
-  - 자식 비교, key 매칭, anchor 계산으로 DOM 이동 최소화
-- [ ] **Phase 6 · 기본 Hook 시스템** (`core/hooks.ts`)
-  - 훅 커서·경로 추적과 상태 저장 구조 완성
-  - `useState`, `useEffect`, 이펙트 큐/cleanup, 미사용 훅 정리
-
-**기본 과제 완료 기준**: `basic.equals.test.tsx`, `basic.mini-react.test.tsx` 전부 통과
-
-### 🚀 심화 과제
-- [ ] **Phase 7 · 확장 Hook & HOC** (`hooks/*.ts`, `hocs/*.ts`)
-  - `useRef`, `useMemo`, `useCallback`, `useDeepMemo`, `useAutoCallback`
-  - `memo`, `deepMemo` 고차 컴포넌트로 렌더 최적화
-
-**심화 과제 완료 기준**: `advanced.hooks.test.tsx`, `advanced.hoc.test.tsx` 전부 통과
-
-## 🧪 테스트 가이드
-
-```bash
-# 기본 과제 검증
-npm test basic.equals.test.tsx
-npm test basic.mini-react.test.tsx
-
-# 심화 과제 검증
-npm test advanced.hooks.test.tsx
-npm test advanced.hoc.test.tsx
-
-# 전체 테스트
-npm test
 ```
 
-## 💡 주요 개념
 
-### Virtual DOM
-JavaScript 객체로 표현된 가상의 DOM 트리. 실제 DOM 조작의 비용을 줄이기 위해 사용됩니다.
 
-### Reconciliation
-이전 Virtual DOM과 새로운 Virtual DOM을 비교하여 실제 DOM에 최소한의 변경만 적용하는 과정입니다.
+내가 지난주차에 만든 spa의 컴포넌트는 (그럴 거라고 생각 했지만) 이 방식에 비하면 정말 간단하게 구현했다. 
+아무래도 전역적으로 컴포넌트 관리를 하는 게 맞는 거 같지만 그래서 그걸 어떻게 하나 했는데 여기서는 path를 사용한다. 그렇게 인덱스를 붙이는데 유니크 할 수가 있나? 했는데 생각해보니 트리의 구조라서 당연한 일이었다.
 
-### Hooks
-함수형 컴포넌트에서 상태와 생명주기 기능을 사용할 수 있게 해주는 메커니즘입니다. 호출 순서가 보장되어야 합니다.
+지난 과제를 하면서 딱히(?) 리액트(정확히는 리액트의 함수형 컴포넌트)에 대한 깊은 이해로 가지 않고 Vue가 이해되는 것 같다 생각했던 까닭은 함수형 컴포넌트의 useEffect는 항상 생명주기 비슷한 거지 생명주기는 아니다...라고 설명에서 여러 번 읽었기 때문이다. 이번주 과제를 하면서 좀 더 useEffect에 대한 정말로 깊은 이해를 좀 해 본 것 같다. 직접 구현하기는 거의 불가능했다.  이 정도로 리액트를 딥 다이브 한 적 없다. 모던 리액트 딥 다이브라는 책을 항상 똑같은 부분을 읽으면서 세부 구현 부분은 외면했었는데 백문이 불여일견이다.
 
-### 컴포넌트 패스
-각 컴포넌트 인스턴스를 고유하게 식별하기 위한 경로입니다. (`"0.c0.i1.c2"` 형식)
-
-## 🔧 디버깅 팁
-
-### 상태 추적
-```javascript
-console.log('Component path:', hooks.currentPath);
-console.log('Hook cursor:', hooks.currentCursor);
-console.log('Current state:', hooks.currentHooks);
-```
-
-### 렌더링 추적
-```javascript
-console.log('Reconciling:', {
-  newType: newNode?.type,
-  oldType: oldInstance?.node?.type
-});
-```
-
-### 의존성 비교
-```javascript
-console.log('Deps changed:', {
-  prev: prevDeps,
-  next: nextDeps,
-  equal: shallowEquals(prev, next)
-});
-```
-
-## 📖 참고 자료
-
-- [React 공식 문서](https://react.dev/)
-- [React Fiber Architecture](https://github.com/acdlite/react-fiber-architecture)
-- [Virtual DOM and Internals](https://reactjs.org/docs/faq-internals.html)
-
----
-
-이 문서들을 통해 React의 내부 동작 원리를 깊이 이해하고, 실제로 동작하는 React 구현체를 만들어보세요! 🚀
